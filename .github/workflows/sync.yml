@@ -1,0 +1,34 @@
+name: Sync from t3code
+
+# model-manifest.json is t3code's manifest, copied verbatim. Luci reads the
+# same schema, so keeping up with new models is this one copy.
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch t3code's manifest
+        run: |
+          curl -fsSL -o /tmp/manifest.json \
+            https://raw.githubusercontent.com/pingdotgg/t3code/main/apps/server/src/provider/model-manifest.json
+          # Refuse anything that is not a manifest Luci can read.
+          jq -e '(.version | type == "number")
+            and (.updatedAt | type == "string")
+            and (.providers.claudeAgent.models | type == "array" and length > 0)
+            and (.providers.claudeAgent.profiles | type == "object")' /tmp/manifest.json
+          cp /tmp/manifest.json model-manifest.json
+      - name: Commit if changed
+        run: |
+          git diff --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Sync model-manifest.json from t3code ($(jq -r .updatedAt model-manifest.json))"
+          git push
